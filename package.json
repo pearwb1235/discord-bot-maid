@@ -4,7 +4,7 @@
   "description": "水梨小窩 Discord女僕",
   "main": "index.js",
   "scripts": {
-    "start": "babel-node -x .js,.ts src",
+    "start": "babel-node -x .js,.ts -r dotenv/config src",
     "build": "npm run build.compile && npm run build.types",
     "build.compile": "babel src --out-dir dist -x .js,.ts --ignore **/*.d.ts,**/*.test.js,**/*.test.ts,**/__tests__ --delete-dir-on-start",
     "build.types": "tsc --project tsconfig.types.json && tsconfig-replace-paths -p tsconfig.types.json -s ./src -o ./dist",
@@ -30,6 +30,7 @@
     "@typescript-eslint/eslint-plugin": "^5.59.2",
     "@typescript-eslint/parser": "^5.59.2",
     "babel-plugin-root-import": "^6.6.0",
+    "dotenv": "^16.3.1",
     "eslint": "^8.39.0",
     "eslint-config-prettier": "^8.8.0",
     "eslint-plugin-prettier": "^4.2.1",
