@@ -1,7 +1,7 @@
 {
-  "name": "Type your project name",
-  "version": "1.0.0",
-  "description": "",
+  "name": "discord-bot-maid",
+  "version": "0.1.0",
+  "description": "水梨小窩 Discord女僕",
   "main": "index.js",
   "scripts": {
     "start": "babel-node -x .js,.ts src",
