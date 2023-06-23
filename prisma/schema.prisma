@@ -9,3 +9,26 @@ datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
+
+model Member {
+  guildId       String
+  memberId      String
+  roleUpdatedAt String?
+
+  memberRoles MemberRoles[]
+
+  @@id([guildId, memberId])
+  @@map("member")
+}
+
+model MemberRoles {
+  guildId  String
+  memberId String
+  roleId   String
+  flag     Boolean
+
+  member Member @relation(fields: [guildId, memberId], references: [guildId, memberId])
+
+  @@id([guildId, memberId, roleId])
+  @@map("member_roles")
+}

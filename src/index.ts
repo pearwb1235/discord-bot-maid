@@ -1,9 +1,12 @@
-import { Client, Events, GatewayIntentBits } from "discord.js";
+import { Events } from "discord.js";
+import { discordClient } from "~/library/discord";
+import { Member } from "~/model/member";
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
-});
-client.once(Events.ClientReady, (c) => {
+discordClient.once(Events.ClientReady, (c) => {
   console.log(`機器人 \`${c.user.tag}\` 已連線`);
 });
-client.login(process.env.DISCORD_TOKEN);
+discordClient.on(Events.MessageCreate, (message) => {
+  const member = new Member(message.guildId, message.member.id);
+  member.getRoles().then((result) => console.log(result));
+});
+discordClient.login(process.env.DISCORD_TOKEN);
