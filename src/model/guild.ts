@@ -89,6 +89,48 @@ export class GuildModel {
     }
   }
 
+  async addRole(roleId: string, defaultValue = false) {
+    const botMember = this.get().members.me;
+    if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles))
+      throw new Error("女僕沒有管理身分組權限");
+    const role = this.get().roles.cache.get(roleId);
+    if (!role) throw new Error("女僕找不到身分組");
+    if (botMember.roles.highest.position <= role.position)
+      throw new Error("女僕無法管理這個身分組");
+    await prismaClient.guildRoles.upsert({
+      create: {
+        guildId: this.id,
+        roleId: roleId,
+        defaultValue: defaultValue,
+      },
+      update: {
+        defaultValue: defaultValue,
+      },
+      where: {
+        guildId_roleId: {
+          guildId: this.id,
+          roleId: roleId,
+        },
+      },
+    });
+    const members = await this.get().members.fetch();
+    for (const member of members.values()) {
+      const memberModel = await MemberModel.get(this, member.id);
+      memberModel.fresh("新增持久身分組(add)");
+    }
+  }
+
+  async delRole(roleId: string) {
+    await prismaClient.guildRoles.delete({
+      where: {
+        guildId_roleId: {
+          guildId: this.id,
+          roleId: roleId,
+        },
+      },
+    });
+  }
+
   async getRoles() {
     return await prismaClient.guildRoles
       .findMany({
