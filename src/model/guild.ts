@@ -11,9 +11,19 @@ import { discordClient } from "~/library/discord";
 import { PrismaClient, prismaClient } from "~/library/prisma";
 import { MemberModel } from "~/model/member";
 
+export enum RefreshMembersType {
+  DEFAULT,
+  ALL,
+  CLEAN,
+}
+
 export class GuildModel {
+  private static _lockRefresh = [];
   static async get(guildId: string): Promise<GuildModel> {
     await discordClient.guilds.fetch(guildId);
+    return await GuildModel._get(guildId);
+  }
+  private static async _get(guildId: string): Promise<GuildModel> {
     const guild = await prismaClient.guild.findUnique({
       where: {
         guildId,
@@ -79,24 +89,8 @@ export class GuildModel {
         guildId: this.id,
       },
     });
-    const members = await this.get().members.fetch();
-    const auditlogs = await this.fetchAuditLogs({
-      type: AuditLogEvent.MemberRoleUpdate,
-    });
-    for (const member of members.values()) {
-      await this._freshMember(member.id, auditlogs);
-      const memberModel = await MemberModel.get(this, member.id);
-      await prismaClient
-        .$transaction(async (prismaClient) => {
-          await memberModel.init(prismaClient);
-        })
-        .catch((err) => {
-          console.error(
-            `Couldn't init member: ${member.displayName}(${member.id})`
-          );
-          console.error(err);
-        });
-    }
+    await this.refreshMembers(RefreshMembersType.CLEAN);
+    await this.refreshMemberRoles("重新整理會員身分組(init)");
   }
 
   async setWelcome(msg: string | null, channelId: string | null) {
@@ -146,11 +140,7 @@ export class GuildModel {
         },
       },
     });
-    const members = await this.get().members.fetch();
-    for (const member of members.values()) {
-      const memberModel = await MemberModel.get(this, member.id);
-      memberModel.fresh("新增持久身分組(add)");
-    }
+    await this.refreshMemberRoles("新增持久身分組(add)");
   }
 
   async delRole(roleId: string) {
@@ -180,105 +170,187 @@ export class GuildModel {
       );
   }
 
-  private async _freshMember(
-    memberId: string,
+  public async refreshMemberRoles(reason?: string) {
+    await this.get()
+      .members.fetch()
+      .then((members) => members.toJSON())
+      .then((members) =>
+        Promise.allSettled(
+          members.map((member) =>
+            MemberModel.get(this, member.id, false)
+              .then((member) => member.freshRoles(reason))
+              .catch((err) => {
+                console.error(
+                  `女僕無法更新 \`${member.displayName}(${member.id})\` 的身分組`
+                );
+                console.error(err);
+              })
+          )
+        )
+      );
+  }
+
+  async refreshMembers(
+    type = RefreshMembersType.DEFAULT,
+    prismaClient = this._prismaClient
+  ) {
+    if (GuildModel._lockRefresh.includes(this.id)) return;
+    GuildModel._lockRefresh.push(this.id);
+    if (type === RefreshMembersType.CLEAN) {
+      await prismaClient.memberRoles.deleteMany({
+        where: {
+          guildId: this.id,
+        },
+      });
+    }
+    const auditlogs = await this.fetchAuditLogs({
+      after:
+        type === RefreshMembersType.ALL || type === RefreshMembersType.CLEAN
+          ? null
+          : this.guild.lastAuditLogId,
+      type: AuditLogEvent.MemberRoleUpdate,
+    });
+    await this.readRoleAuditLogs(auditlogs, prismaClient);
+    if (type === RefreshMembersType.ALL || type === RefreshMembersType.CLEAN) {
+      const originMemberRoles: Record<
+        string,
+        Record<string, boolean>
+      > = await prismaClient.memberRoles
+        .findMany({
+          where: {
+            guildId: this.id,
+          },
+        })
+        .then((memberRoles) =>
+          memberRoles.reduce((memberRoles, memberRole) => {
+            if (!(memberRole.memberId in memberRoles))
+              memberRoles[memberRole.memberId] = {};
+            memberRoles[memberRole.memberId][memberRole.roleId] =
+              memberRole.flag;
+            return memberRoles;
+          }, {})
+        );
+      const memberRoles: Record<string, Record<string, boolean>> = {};
+      const members = await this.get()
+        .members.fetch()
+        .then((members) => members.toJSON());
+      for (const member of members) {
+        for (const role of member.roles.cache.toJSON()) {
+          if (
+            member.id in originMemberRoles &&
+            originMemberRoles[member.id][role.id]
+          )
+            continue;
+          if (!(member.id in memberRoles)) memberRoles[member.id] = {};
+          memberRoles[member.id][role.id] = true;
+        }
+      }
+      await this.saveMemberRoles(memberRoles, prismaClient);
+    }
+    if (auditlogs.length > 0) {
+      this.guild = await prismaClient.guild.update({
+        data: {
+          lastAuditLogId: auditlogs[auditlogs.length - 1].id,
+        },
+        where: {
+          guildId: this.id,
+        },
+      });
+    }
+    const index = GuildModel._lockRefresh.indexOf(this.id);
+    if (index !== -1) GuildModel._lockRefresh.splice(index, 1);
+  }
+
+  private async readRoleAuditLogs(
     auditlogs: GuildAuditLogsEntry<AuditLogEvent.MemberRoleUpdate>[],
     prismaClient = this._prismaClient
   ) {
-    await prismaClient.member.upsert({
-      create: {
-        guildId: this.id,
-        memberId: memberId,
-      },
-      update: {},
-      where: {
-        guildId_memberId: {
-          guildId: this.id,
-          memberId: memberId,
-        },
-      },
-    });
-    const checkedRoles: string[] = [];
-    const memberRolesUpsertData: Prisma.Enumerable<Prisma.MemberRolesUpsertWithWhereUniqueWithoutMemberInput> =
-      [];
-    let lastAuditlogId;
+    if (auditlogs.length < 1) return;
+    const memberRoles: Record<string, Record<string, boolean>> = {};
     for (const auditlog of auditlogs) {
-      if (!lastAuditlogId) {
-        lastAuditlogId = auditlog.id;
-      }
-      if (auditlog.targetId !== memberId) continue;
       for (const auditlogChange of auditlog.changes) {
         const roles = (
           auditlogChange.new as Pick<APIRole, "id" | "name">[]
         ).reverse();
         for (const role of roles) {
-          if (checkedRoles.includes(role.id)) continue;
-          checkedRoles.push(role.id);
-          memberRolesUpsertData.push({
-            create: {
-              roleId: role.id,
-              flag: auditlogChange.key === "$add",
-            },
-            update: {
-              flag: auditlogChange.key === "$add",
-            },
-            where: {
-              guildId_memberId_roleId: {
-                guildId: this.id,
-                memberId: memberId,
-                roleId: role.id,
-              },
-            },
-          });
+          if (!(auditlog.targetId in memberRoles))
+            memberRoles[auditlog.targetId] = {};
+          memberRoles[auditlog.targetId][role.id] =
+            auditlogChange.key === "$add";
         }
       }
     }
-    if (!lastAuditlogId) return;
-    await prismaClient.member.update({
-      data: {
-        roleUpdatedAt: lastAuditlogId,
-        memberRoles:
-          memberRolesUpsertData.length > 0
-            ? {
-                upsert: memberRolesUpsertData,
-              }
-            : undefined,
-      },
-      where: {
-        guildId_memberId: {
-          guildId: this.id,
-          memberId: memberId,
-        },
-      },
-    });
+    await this.saveMemberRoles(memberRoles, prismaClient);
   }
 
-  async freshMember(
-    memberId: string,
-    refresh = false,
+  private async saveMemberRoles(
+    memberRoles: Record<string, Record<string, boolean>>,
     prismaClient = this._prismaClient
   ) {
-    const member = await prismaClient.member.upsert({
-      create: {
-        guildId: this.id,
-        memberId: memberId,
-      },
-      update: {},
-      where: {
-        guildId_memberId: {
-          guildId: this.id,
-          memberId: memberId,
+    const memberIds = Object.keys(memberRoles);
+    if (memberIds.length === 0) return;
+    await prismaClient.guild.update({
+      data: {
+        members: {
+          upsert:
+            memberIds.map<Prisma.MemberUpsertWithWhereUniqueWithoutGuildInput>(
+              (memberId) => ({
+                create: {
+                  memberId: memberId,
+                  memberRoles: {
+                    create: Object.keys(
+                      memberRoles[memberId]
+                    ).map<Prisma.MemberRolesCreateWithoutMemberInput>(
+                      (roleId) => ({
+                        roleId: roleId,
+                        flag: memberRoles[memberId][roleId],
+                      })
+                    ),
+                  },
+                },
+                update: {
+                  memberRoles: {
+                    upsert: Object.keys(
+                      memberRoles[memberId]
+                    ).map<Prisma.MemberRolesUpsertWithWhereUniqueWithoutMemberInput>(
+                      (roleId) => ({
+                        create: {
+                          roleId: roleId,
+                          flag: memberRoles[memberId][roleId],
+                        },
+                        update: {
+                          flag: memberRoles[memberId][roleId],
+                        },
+                        where: {
+                          guildId_memberId_roleId: {
+                            guildId: this.id,
+                            memberId: memberId,
+                            roleId: roleId,
+                          },
+                        },
+                      })
+                    ),
+                  },
+                },
+                where: {
+                  guildId_memberId: {
+                    guildId: this.id,
+                    memberId: memberId,
+                  },
+                },
+              })
+            ),
         },
       },
+      where: {
+        guildId: this.id,
+      },
     });
-    const lastReadId = refresh ? null : member.roleUpdatedAt;
-    const auditlogs = await this.fetchAuditLogs({
-      after: lastReadId,
-      type: AuditLogEvent.MemberRoleUpdate,
-    });
-    await this._freshMember(memberId, auditlogs, prismaClient);
   }
 
+  /**
+   * 取得審核日誌 並由舊到新排序
+   */
   async fetchAuditLogs<T extends GuildAuditLogsResolvable = null>(
     options?: GuildAuditLogsFetchOptions<T>
   ): Promise<GuildAuditLogsEntry<T>[]> {
@@ -298,7 +370,7 @@ export class GuildModel {
             ? nextAuditlogs[nextAuditlogs.length - 1].id
             : null;
       }
-      return auditlogs.reverse();
+      return auditlogs;
     } else {
       const auditlogs = await this.get()
         .fetchAuditLogs(options)
@@ -315,7 +387,7 @@ export class GuildModel {
             ? nextAuditlogs[nextAuditlogs.length - 1].id
             : null;
       }
-      return auditlogs;
+      return auditlogs.reverse();
     }
   }
 }

@@ -15,6 +15,7 @@ model Guild {
   markRoleId       String?
   welcomeChannelId String?
   welcomeMsg       String?
+  lastAuditLogId   String?
 
   members    Member[]
   guildRoles GuildRoles[]
@@ -35,11 +36,10 @@ model GuildRoles {
 }
 
 model Member {
-  guildId       String
-  memberId      String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @default(now()) @updatedAt
-  roleUpdatedAt String?
+  guildId   String
+  memberId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   guild       Guild         @relation(fields: [guildId], references: [guildId])
   memberRoles MemberRoles[]

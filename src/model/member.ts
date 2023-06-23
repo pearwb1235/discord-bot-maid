@@ -4,15 +4,23 @@ import { PrismaClient, prismaClient } from "~/library/prisma";
 import { GuildModel } from "~/model/guild";
 
 export class MemberModel {
-  static async get(guildId: string, memberId: string): Promise<MemberModel>;
-  static async get(guild: GuildModel, memberId: string): Promise<MemberModel>;
+  static async get(
+    guildId: string,
+    memberId: string,
+    refresh?: boolean
+  ): Promise<MemberModel>;
+  static async get(
+    guild: GuildModel,
+    memberId: string,
+    refresh?: boolean
+  ): Promise<MemberModel>;
   static async get(
     guild: string | GuildModel,
-    memberId: string
+    memberId: string,
+    refresh = true
   ): Promise<MemberModel> {
     if (!(guild instanceof GuildModel)) guild = await GuildModel.get(guild);
-    await guild.get().members.fetch(memberId);
-    await guild.freshMember(memberId);
+    if (refresh) await guild.get().members.fetch(memberId);
     const member = await prismaClient.member.findUnique({
       where: {
         guildId_memberId: {
@@ -21,8 +29,14 @@ export class MemberModel {
         },
       },
     });
-    if (!member) throw new Error("Not found member.");
-    return new MemberModel(guild, member);
+    if (member) return new MemberModel(guild, member);
+    const now = new Date();
+    return new MemberModel(guild, {
+      guildId: guild.id,
+      memberId: memberId,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   private _prismaClient: PrismaClient;
@@ -58,38 +72,7 @@ export class MemberModel {
     return this._guildMember;
   }
 
-  async init(prismaClient = this._prismaClient) {
-    await this.save(false, prismaClient);
-    const roles = await prismaClient.memberRoles.findMany({
-      where: {
-        guildId: this.guildId,
-        memberId: this.id,
-      },
-    });
-    for (const role of roles) {
-      if (!role.flag) continue;
-      if (this.get().roles.cache.get(role.roleId)) continue;
-      await prismaClient.memberRoles.update({
-        data: {
-          flag: false,
-        },
-        where: {
-          guildId_memberId_roleId: {
-            guildId: this.guildId,
-            memberId: this.id,
-            roleId: role.roleId,
-          },
-        },
-      });
-    }
-    await this.fresh("重新整理會員身分組(init)");
-  }
-
-  async save(refresh = false, prismaClient = this._prismaClient) {
-    await this.guild.freshMember(this.id, refresh, prismaClient);
-  }
-
-  async fresh(reason?: string) {
+  async freshRoles(reason?: string) {
     const botMember = this.guild.get().members.me;
     if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles))
       throw new Error("女僕沒有管理身分組權限");
@@ -120,7 +103,6 @@ export class MemberModel {
       await this.get().roles.set(setRoles, reason);
     } catch (err) {
       await this.get().roles.set(originRoles, "女僕更新身分組失敗");
-      console.log("女僕更新身分組失敗");
       throw err;
     }
   }
@@ -133,7 +115,6 @@ export class MemberModel {
   async getRoles(
     searchRoles?: string[] | Record<string, boolean>
   ): Promise<Record<string, boolean>> {
-    await this.save();
     if (!searchRoles) searchRoles = await this.guild.getRoles();
     if (Array.isArray(searchRoles))
       searchRoles = searchRoles.reduce(
