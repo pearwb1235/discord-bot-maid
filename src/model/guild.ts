@@ -66,6 +66,7 @@ export class GuildModel {
       throw new Error("女僕沒有管理身分組權限");
     const role = this.get().roles.cache.get(markRoleId);
     if (!role) throw new Error("女僕找不到身分組");
+    if (role.position === 0) throw new Error("女僕無法管理這個身分組");
     if (botMember.roles.highest.position <= role.position)
       throw new Error("女僕無法管理這個身分組");
     this.guild = await prismaClient.guild.update({
@@ -126,6 +127,7 @@ export class GuildModel {
       throw new Error("女僕沒有管理身分組權限");
     const role = this.get().roles.cache.get(roleId);
     if (!role) throw new Error("女僕找不到身分組");
+    if (role.position === 0) throw new Error("女僕無法管理這個身分組");
     if (botMember.roles.highest.position <= role.position)
       throw new Error("女僕無法管理這個身分組");
     await prismaClient.guildRoles.upsert({
