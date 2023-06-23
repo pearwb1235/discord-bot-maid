@@ -1,10 +1,17 @@
 import { Guild, Prisma } from "@prisma/client";
-import { APIRole, AuditLogEvent } from "discord.js";
+import {
+  APIRole,
+  AuditLogEvent,
+  GuildAuditLogsEntry,
+  PermissionFlagsBits,
+} from "discord.js";
 import { discordClient } from "~/library/discord";
 import { PrismaClient, prismaClient } from "~/library/prisma";
+import { MemberModel } from "~/model/member";
 
 export class GuildModel {
   static async get(guildId: string): Promise<GuildModel> {
+    await discordClient.guilds.fetch(guildId);
     const guild = await prismaClient.guild.findUnique({
       where: {
         guildId,
@@ -44,6 +51,44 @@ export class GuildModel {
     return this._guild;
   }
 
+  async init(markRoleId: string): Promise<void> {
+    const botMember = this.get().members.me;
+    if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles))
+      throw new Error("女僕沒有管理身分組權限");
+    const role = this.get().roles.cache.get(markRoleId);
+    if (!role) throw new Error("女僕找不到身分組");
+    if (botMember.roles.highest.position <= role.position)
+      throw new Error("女僕無法管理這個身分組");
+    this.guild = await prismaClient.guild.update({
+      data: {
+        markRoleId: markRoleId,
+      },
+      where: {
+        guildId: this.id,
+      },
+    });
+    const members = await this.get().members.fetch();
+    const auditlogs = await this.get()
+      .fetchAuditLogs({
+        type: AuditLogEvent.MemberRoleUpdate,
+      })
+      .then((auditlogs) => auditlogs.entries.values());
+    for (const member of members.values()) {
+      await this._freshMember(member.id, auditlogs);
+      const memberModel = await MemberModel.get(this, member.id);
+      await prismaClient
+        .$transaction(async (prismaClient) => {
+          await memberModel.init(prismaClient);
+        })
+        .catch((err) => {
+          console.error(
+            `Couldn't init member: ${member.displayName}(${member.id})`
+          );
+          console.error(err);
+        });
+    }
+  }
+
   async getRoles() {
     return await prismaClient.guildRoles
       .findMany({
@@ -60,12 +105,14 @@ export class GuildModel {
       );
   }
 
-  async freshMember(
+  private async _freshMember(
     memberId: string,
-    refresh = false,
+    auditlogs: IterableIterator<
+      GuildAuditLogsEntry<AuditLogEvent.MemberRoleUpdate>
+    >,
     prismaClient = this._prismaClient
   ) {
-    const member = await prismaClient.member.upsert({
+    await prismaClient.member.upsert({
       create: {
         guildId: this.id,
         memberId: memberId,
@@ -78,13 +125,6 @@ export class GuildModel {
         },
       },
     });
-    const lastReadId = refresh ? null : member.roleUpdatedAt;
-    const auditlogs = await this.get()
-      .fetchAuditLogs({
-        after: lastReadId,
-        type: AuditLogEvent.MemberRoleUpdate,
-      })
-      .then((auditlogs) => auditlogs.entries.values());
     const checkedRoles: string[] = [];
     const memberRolesUpsertData: Prisma.Enumerable<Prisma.MemberRolesUpsertWithWhereUniqueWithoutMemberInput> =
       [];
@@ -138,5 +178,33 @@ export class GuildModel {
         },
       },
     });
+  }
+
+  async freshMember(
+    memberId: string,
+    refresh = false,
+    prismaClient = this._prismaClient
+  ) {
+    const member = await prismaClient.member.upsert({
+      create: {
+        guildId: this.id,
+        memberId: memberId,
+      },
+      update: {},
+      where: {
+        guildId_memberId: {
+          guildId: this.id,
+          memberId: memberId,
+        },
+      },
+    });
+    const lastReadId = refresh ? null : member.roleUpdatedAt;
+    const auditlogs = await this.get()
+      .fetchAuditLogs({
+        after: lastReadId,
+        type: AuditLogEvent.MemberRoleUpdate,
+      })
+      .then((auditlogs) => auditlogs.entries.values());
+    await this._freshMember(memberId, auditlogs, prismaClient);
   }
 }

@@ -58,6 +58,33 @@ export class MemberModel {
     return this._guildMember;
   }
 
+  async init(prismaClient = this._prismaClient) {
+    await this.save(false, prismaClient);
+    const roles = await prismaClient.memberRoles.findMany({
+      where: {
+        guildId: this.guildId,
+        memberId: this.id,
+      },
+    });
+    for (const role of roles) {
+      if (!role.flag) continue;
+      if (this.get().roles.cache.get(role.roleId)) continue;
+      await prismaClient.memberRoles.update({
+        data: {
+          flag: false,
+        },
+        where: {
+          guildId_memberId_roleId: {
+            guildId: this.guildId,
+            memberId: this.id,
+            roleId: role.roleId,
+          },
+        },
+      });
+    }
+    await this.fresh("重新整理會員身分組(init)");
+  }
+
   async save(refresh = false, prismaClient = this._prismaClient) {
     await this.guild.freshMember(this.id, refresh, prismaClient);
   }
