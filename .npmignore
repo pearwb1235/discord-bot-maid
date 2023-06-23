@@ -135,6 +135,11 @@ dist
 
 .tern-port
 
+# Prisma Database
+
+prisma/*.db
+prisma/*.db-journal
+
 # Publish File
 !dist
 

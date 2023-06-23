@@ -134,3 +134,8 @@ dist
 # TernJS port file
 
 .tern-port
+
+# Prisma Database
+
+prisma/*.db
+prisma/*.db-journal
