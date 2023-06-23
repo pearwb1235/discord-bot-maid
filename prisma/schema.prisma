@@ -11,8 +11,10 @@ datasource db {
 }
 
 model Guild {
-  guildId    String
-  markRoleId String?
+  guildId          String
+  markRoleId       String?
+  welcomeChannelId String?
+  welcomeMsg       String?
 
   members    Member[]
   guildRoles GuildRoles[]

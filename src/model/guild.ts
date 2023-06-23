@@ -44,6 +44,15 @@ export class GuildModel {
     return this.guild.markRoleId;
   }
 
+  get welcome() {
+    return this.guild.welcomeChannelId && this.guild.welcomeMsg
+      ? {
+          channelId: this.guild.welcomeChannelId,
+          msg: this.guild.welcomeMsg,
+        }
+      : null;
+  }
+
   get() {
     if (this._guild) return this._guild;
     this._guild = discordClient.guilds.cache.get(this.id);
@@ -87,6 +96,28 @@ export class GuildModel {
           console.error(err);
         });
     }
+  }
+
+  async setWelcome(msg: string | null, channelId: string | null) {
+    const botMember = this.get().members.me;
+
+    if (channelId !== null) {
+      const channel = this.get().channels.cache.get(channelId);
+      if (!channel.isTextBased()) throw new Error("女僕無法使用文字以外的頻道");
+      if (
+        !channel.permissionsFor(botMember).has(PermissionFlagsBits.SendMessages)
+      )
+        throw new Error("女僕沒有講話權限");
+    }
+    this.guild = await prismaClient.guild.update({
+      data: {
+        welcomeMsg: msg && channelId ? msg : null,
+        welcomeChannelId: msg && channelId ? channelId : null,
+      },
+      where: {
+        guildId: this.id,
+      },
+    });
   }
 
   async addRole(roleId: string, defaultValue = false) {
