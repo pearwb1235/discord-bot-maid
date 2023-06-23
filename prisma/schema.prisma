@@ -10,11 +10,34 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Guild {
+  guildId    String
+  markRoleId String?
+
+  members    Member[]
+  guildRoles GuildRoles[]
+
+  @@id([guildId])
+  @@map("guild")
+}
+
+model GuildRoles {
+  guildId      String
+  roleId       String
+  defaultValue Boolean @default(false)
+
+  guild Guild @relation(fields: [guildId], references: [guildId])
+
+  @@id([guildId, roleId])
+  @@map("guild_roles")
+}
+
 model Member {
   guildId       String
   memberId      String
   roleUpdatedAt String?
 
+  guild       Guild         @relation(fields: [guildId], references: [guildId])
   memberRoles MemberRoles[]
 
   @@id([guildId, memberId])
