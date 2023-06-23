@@ -3,6 +3,8 @@ import {
   APIRole,
   AuditLogEvent,
   GuildAuditLogsEntry,
+  GuildAuditLogsFetchOptions,
+  GuildAuditLogsResolvable,
   PermissionFlagsBits,
 } from "discord.js";
 import { discordClient } from "~/library/discord";
@@ -78,11 +80,9 @@ export class GuildModel {
       },
     });
     const members = await this.get().members.fetch();
-    const auditlogs = await this.get()
-      .fetchAuditLogs({
-        type: AuditLogEvent.MemberRoleUpdate,
-      })
-      .then((auditlogs) => auditlogs.entries.values());
+    const auditlogs = await this.fetchAuditLogs({
+      type: AuditLogEvent.MemberRoleUpdate,
+    });
     for (const member of members.values()) {
       await this._freshMember(member.id, auditlogs);
       const memberModel = await MemberModel.get(this, member.id);
@@ -182,9 +182,7 @@ export class GuildModel {
 
   private async _freshMember(
     memberId: string,
-    auditlogs: IterableIterator<
-      GuildAuditLogsEntry<AuditLogEvent.MemberRoleUpdate>
-    >,
+    auditlogs: GuildAuditLogsEntry<AuditLogEvent.MemberRoleUpdate>[],
     prismaClient = this._prismaClient
   ) {
     await prismaClient.member.upsert({
@@ -274,12 +272,31 @@ export class GuildModel {
       },
     });
     const lastReadId = refresh ? null : member.roleUpdatedAt;
-    const auditlogs = await this.get()
-      .fetchAuditLogs({
-        after: lastReadId,
-        type: AuditLogEvent.MemberRoleUpdate,
-      })
-      .then((auditlogs) => auditlogs.entries.values());
+    const auditlogs = await this.fetchAuditLogs({
+      after: lastReadId,
+      type: AuditLogEvent.MemberRoleUpdate,
+    });
     await this._freshMember(memberId, auditlogs, prismaClient);
+  }
+
+  async fetchAuditLogs<T extends GuildAuditLogsResolvable = null>(
+    options?: GuildAuditLogsFetchOptions<T>
+  ): Promise<GuildAuditLogsEntry<T>[]> {
+    const auditlogs = await this.get()
+      .fetchAuditLogs(options)
+      .then((auditlogs) => auditlogs.entries.toJSON());
+    let readId =
+      auditlogs.length > 0 ? auditlogs[auditlogs.length - 1].id : null;
+    while (readId) {
+      const nextAuditlogs = await this.get()
+        .fetchAuditLogs({ ...options, before: readId })
+        .then((auditlogs) => auditlogs.entries.toJSON());
+      auditlogs.push(...nextAuditlogs);
+      readId =
+        nextAuditlogs.length > 0
+          ? nextAuditlogs[nextAuditlogs.length - 1].id
+          : null;
+    }
+    return auditlogs;
   }
 }
