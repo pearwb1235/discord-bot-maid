@@ -35,10 +35,12 @@ export default class WelcomeCommand implements BaseCommand {
       );
       await interaction.reply({
         content: "女僕知道了",
+        ephemeral: true,
       });
     } catch (err) {
       await interaction.reply({
         content: err.toString(),
+        ephemeral: true,
       });
     }
   }
