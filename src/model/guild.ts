@@ -282,21 +282,40 @@ export class GuildModel {
   async fetchAuditLogs<T extends GuildAuditLogsResolvable = null>(
     options?: GuildAuditLogsFetchOptions<T>
   ): Promise<GuildAuditLogsEntry<T>[]> {
-    const auditlogs = await this.get()
-      .fetchAuditLogs(options)
-      .then((auditlogs) => auditlogs.entries.toJSON());
-    let readId =
-      auditlogs.length > 0 ? auditlogs[auditlogs.length - 1].id : null;
-    while (readId) {
-      const nextAuditlogs = await this.get()
-        .fetchAuditLogs({ ...options, before: readId })
+    if (options.after) {
+      const auditlogs = await this.get()
+        .fetchAuditLogs(options)
         .then((auditlogs) => auditlogs.entries.toJSON());
-      auditlogs.push(...nextAuditlogs);
-      readId =
-        nextAuditlogs.length > 0
-          ? nextAuditlogs[nextAuditlogs.length - 1].id
-          : null;
+      let readId =
+        auditlogs.length > 0 ? auditlogs[auditlogs.length - 1].id : null;
+      while (readId) {
+        const nextAuditlogs = await this.get()
+          .fetchAuditLogs({ ...options, after: readId })
+          .then((auditlogs) => auditlogs.entries.toJSON());
+        auditlogs.push(...nextAuditlogs);
+        readId =
+          nextAuditlogs.length > 0
+            ? nextAuditlogs[nextAuditlogs.length - 1].id
+            : null;
+      }
+      return auditlogs.reverse();
+    } else {
+      const auditlogs = await this.get()
+        .fetchAuditLogs(options)
+        .then((auditlogs) => auditlogs.entries.toJSON());
+      let readId =
+        auditlogs.length > 0 ? auditlogs[auditlogs.length - 1].id : null;
+      while (readId) {
+        const nextAuditlogs = await this.get()
+          .fetchAuditLogs({ ...options, before: readId })
+          .then((auditlogs) => auditlogs.entries.toJSON());
+        auditlogs.push(...nextAuditlogs);
+        readId =
+          nextAuditlogs.length > 0
+            ? nextAuditlogs[nextAuditlogs.length - 1].id
+            : null;
+      }
+      return auditlogs;
     }
-    return auditlogs;
   }
 }
