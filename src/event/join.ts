@@ -18,7 +18,7 @@ export default class JoinEvent implements BaseEvent {
     }
     if (guild.markRoleId) {
       const member = await MemberModel.get(guild, interaction.user.id);
-      await member.fresh();
+      await member.freshRoles("加入伺服器(join)");
     }
   }
 }
