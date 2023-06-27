@@ -2,6 +2,7 @@ import { CacheType, ClientEvents, Events, Interaction } from "discord.js";
 import { BaseEvent } from "~/event";
 import { GuildModel } from "~/model/guild";
 import { MemberModel } from "~/model/member";
+import { formatString } from "~/util/formatString";
 
 export default class JoinEvent implements BaseEvent {
   name: keyof ClientEvents = Events.GuildMemberAdd;
@@ -12,7 +13,7 @@ export default class JoinEvent implements BaseEvent {
       const channel = guild.get().channels.cache.get(welcome.channelId);
       if (channel && channel.isTextBased()) {
         channel.send(
-          welcome.msg.replace(/(?<!\\)({{user}})/g, `<@${interaction.user.id}>`)
+          formatString(welcome.msg, { user: `<@${interaction.user.id}>` })
         );
       }
     }
