@@ -12,6 +12,7 @@ import {
 } from "discord.js";
 import * as fs from "fs";
 import * as path from "path";
+import { logger } from "~/library/logger";
 
 export interface BaseCommand {
   data:
@@ -41,9 +42,7 @@ for (const filePath of commandFiles) {
     const command: BaseCommand = new Command();
     commands[command.data.name] = command;
   } catch {
-    console.log(
-      `[WARNING] The command at ${filePath} is missing a command class.`
-    );
+    logger.warn(`The command at ${filePath} is missing a command class.`);
   }
 }
 
@@ -53,11 +52,11 @@ async function handlerCommands(interaction: Interaction<CacheType>) {
   const command = commands[interaction.commandName];
 
   if (!command) {
-    console.error(`No command matching ${interaction.commandName} was found.`);
+    logger.error(`No command matching ${interaction.commandName} was found.`);
     return;
   }
   await Promise.resolve(command.execute(interaction)).catch((e) => {
-    console.error(e);
+    logger.error(e.toString());
   });
 }
 
@@ -81,7 +80,7 @@ export async function refreshCommands(): Promise<void> {
   const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
   try {
-    console.log(
+    logger.log(
       `Started refreshing ${commandsJSONObj.length} application (/) commands.`
     );
 
@@ -92,11 +91,11 @@ export async function refreshCommands(): Promise<void> {
     )) as { length: string };
     fs.writeFileSync(path.join(__dirname, ".cache"), commandsJSON);
 
-    console.log(
+    logger.log(
       `Successfully reloaded ${data.length} application (/) commands.`
     );
   } catch (error) {
     // And of course, make sure you catch and log any errors!
-    console.error(error);
+    logger.error(error.toString());
   }
 }

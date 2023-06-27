@@ -1,6 +1,6 @@
 {
   "name": "discord-bot-maid",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "水梨小窩 Discord女僕",
   "main": "index.js",
   "scripts": {
@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.21.5",
+    "@pearwb/logger": "^0.3.4",
     "@prisma/client": "^4.15.0",
     "discord.js": "^14.11.0"
   }

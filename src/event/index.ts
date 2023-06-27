@@ -1,6 +1,7 @@
 import { CacheType, Client, ClientEvents, Interaction } from "discord.js";
 import * as fs from "fs";
 import * as path from "path";
+import { logger } from "~/library/logger";
 
 export interface BaseEvent {
   name: keyof ClientEvents;
@@ -27,9 +28,7 @@ for (const filePath of eventFiles) {
     const e: BaseEvent = new Event();
     events[filePath] = e;
   } catch {
-    console.log(
-      `[WARNING] The event at ${filePath} is missing an event class.`
-    );
+    logger.warn(`The event at ${filePath} is missing an event class.`);
   }
 }
 
@@ -39,13 +38,13 @@ export function registerEvents(client: Client) {
       const event = events[filePath];
       const executeProxy = (interaction: Interaction<CacheType>) =>
         Promise.resolve(event.execute(interaction)).catch((e) => {
-          console.error(e);
+          logger.error(e);
         });
       if (event.once) client.once(event.name, executeProxy);
       else client.on(event.name, executeProxy);
     } catch (e) {
-      console.log(`[ERROR] Cannot register event at ${filePath}`);
-      console.error(e);
+      logger.error(`Cannot register event at ${filePath}`);
+      logger.error(e.toString());
     }
   }
 }

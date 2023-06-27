@@ -8,6 +8,7 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { discordClient } from "~/library/discord";
+import { logger } from "~/library/logger";
 import { PrismaClient, prismaClient } from "~/library/prisma";
 import { MemberModel } from "~/model/member";
 
@@ -180,10 +181,10 @@ export class GuildModel {
             MemberModel.get(this, member.id, false)
               .then((member) => member.freshRoles(reason))
               .catch((err) => {
-                console.error(
+                logger.error(
                   `女僕無法更新 \`${member.displayName}(${member.id})\` 的身分組`
                 );
-                console.error(err);
+                logger.error(err.toString());
               })
           )
         )
