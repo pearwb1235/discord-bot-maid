@@ -24,10 +24,15 @@ export default class InitCommand implements BaseCommand {
     });
     const guild = await GuildModel.get(interaction.guildId);
     try {
-      await guild.init(interaction.options.getRole("role", true).id);
-      await interaction.editReply({
-        content: "女僕已入住",
-      });
+      if (await guild.init(interaction.options.getRole("role", true).id)) {
+        await interaction.editReply({
+          content: "女僕已入住",
+        });
+      } else {
+        await interaction.editReply({
+          content: "女僕正在處理其他事情，稍後再來找她吧",
+        });
+      }
     } catch (err) {
       await interaction.editReply({
         content: err.toString(),

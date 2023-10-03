@@ -73,7 +73,7 @@ export class GuildModel {
     return this._guild;
   }
 
-  async init(markRoleId: string): Promise<void> {
+  async init(markRoleId: string): Promise<boolean> {
     const botMember = this.get().members.me;
     if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles))
       throw new Error("女僕沒有管理身分組權限");
@@ -90,8 +90,12 @@ export class GuildModel {
         guildId: this.id,
       },
     });
-    await this.refreshMembers(RefreshMembersType.CLEAN);
-    await this.refreshMemberRoles("重新整理會員身分組(init)");
+    if (await this.refreshMembers(RefreshMembersType.CLEAN)) {
+      await this.refreshMemberRoles("重新整理會員身分組(init)");
+      return true;
+    } else {
+      return false;
+    }
   }
 
   async setWelcome(msg: string | null, channelId: string | null) {
