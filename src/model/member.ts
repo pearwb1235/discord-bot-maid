@@ -1,4 +1,4 @@
-import { Member } from "@prisma/client";
+import { Member, Prisma } from "@prisma/client";
 import { GuildMember, PermissionFlagsBits } from "discord.js";
 import { PrismaClient, prismaClient } from "~/library/prisma";
 import { GuildModel } from "~/model/guild";
@@ -70,6 +70,72 @@ export class MemberModel {
     this._guildMember = this.guild.get().members.cache.get(this.id);
     if (!this._guildMember) throw new Error("Not found member.");
     return this._guildMember;
+  }
+
+  async init() {
+    const roles: Record<string, boolean> = {};
+    for (const role of this.get().roles.cache.toJSON()) {
+      roles[role.id] = true;
+    }
+    await this.saveRoles(roles);
+  }
+
+  private async saveRoles(
+    roles: Record<string, boolean>,
+    prismaClient = this._prismaClient
+  ) {
+    await prismaClient.guild.update({
+      data: {
+        members: {
+          upsert: {
+            create: {
+              memberId: this.id,
+              memberRoles: {
+                create: Object.keys(
+                  roles
+                ).map<Prisma.MemberRolesCreateWithoutMemberInput>((roleId) => ({
+                  roleId: roleId,
+                  flag: roles[roleId],
+                })),
+              },
+            },
+            update: {
+              memberRoles: {
+                upsert: Object.keys(
+                  roles
+                ).map<Prisma.MemberRolesUpsertWithWhereUniqueWithoutMemberInput>(
+                  (roleId) => ({
+                    create: {
+                      roleId: roleId,
+                      flag: roles[roleId],
+                    },
+                    update: {
+                      flag: roles[roleId],
+                    },
+                    where: {
+                      guildId_memberId_roleId: {
+                        guildId: this.guildId,
+                        memberId: this.id,
+                        roleId: roleId,
+                      },
+                    },
+                  })
+                ),
+              },
+            },
+            where: {
+              guildId_memberId: {
+                guildId: this.guildId,
+                memberId: this.id,
+              },
+            },
+          },
+        },
+      },
+      where: {
+        guildId: this.guildId,
+      },
+    });
   }
 
   async freshRoles(reason?: string) {

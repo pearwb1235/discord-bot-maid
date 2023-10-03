@@ -15,6 +15,7 @@ export async function loadGuilds() {
       }
       if (!guild.markRoleId) continue;
       const guildModel = await GuildModel.get(guild.guildId);
+      await guildModel.refreshMembers();
       const members = await guildModel
         .get()
         .members.fetch()
@@ -26,9 +27,9 @@ export async function loadGuilds() {
           `女僕抓到了下班時間偷溜進來的 \`${member.displayName}(${member.id})\``
         );
         const memberModel = await MemberModel.get(guildModel, member.id);
+        await memberModel.init();
         await memberModel.freshRoles("加入伺服器(load)");
       }
-      await guildModel.refreshMembers();
     }
     logger.debug(0, "女僕開始上班!");
   } catch (err) {
