@@ -28,10 +28,11 @@ export default class WelcomeCommand implements BaseCommand {
   ): Promise<void> {
     const guild = await GuildModel.get(interaction.guildId);
     const channel = interaction.options.getChannel("channel");
+    const msg = interaction.options.getString("msg");
     try {
       await guild.setWelcome(
-        interaction.options.getString("msg"),
-        channel ? channel.id : null
+        msg === null ? null : interaction.options.getString("msg"),
+        msg === null ? null : channel ? channel.id : interaction.channelId
       );
       await interaction.reply({
         content: "女僕知道了",
