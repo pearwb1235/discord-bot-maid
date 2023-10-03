@@ -194,8 +194,8 @@ export class GuildModel {
   async refreshMembers(
     type = RefreshMembersType.DEFAULT,
     prismaClient = this._prismaClient
-  ) {
-    if (GuildModel._lockRefresh.includes(this.id)) return;
+  ): Promise<boolean> {
+    if (GuildModel._lockRefresh.includes(this.id)) return false;
     GuildModel._lockRefresh.push(this.id);
     if (type === RefreshMembersType.CLEAN) {
       await prismaClient.memberRoles.deleteMany({
@@ -260,6 +260,7 @@ export class GuildModel {
     }
     const index = GuildModel._lockRefresh.indexOf(this.id);
     if (index !== -1) GuildModel._lockRefresh.splice(index, 1);
+    return true;
   }
 
   private async readRoleAuditLogs(
