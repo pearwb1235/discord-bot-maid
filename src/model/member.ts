@@ -166,6 +166,7 @@ export class MemberModel {
       }
       if (!setRoles.includes(this.guild.markRoleId))
         setRoles.push(this.guild.markRoleId);
+      if (["develop", "DEVELOP"].includes(process.env.NODE_ENV)) return;
       await this.get().roles.set(setRoles, reason);
     } catch (err) {
       await this.get().roles.set(originRoles, "女僕更新身分組失敗");
